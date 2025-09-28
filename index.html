@@ -1,134 +1,127 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Offline Repo Viewer</title>
-<style>
-  body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    display: flex;
-    height: 100vh;
-  }
-  #sidebar {
-    width: 300px;
-    background: #f4f4f4;
-    padding: 10px;
-    overflow-y: auto;
-    border-right: 1px solid #ccc;
-  }
-  #content {
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    font-family: monospace;
-    background: #fff;
-  }
-  .folder, .file {
-    margin-left: 20px;
-    cursor: pointer;
-  }
-  .folder::before { content: "📂 "; }
-  .file::before { content: "📄 "; }
-  .nested { display: none; }
-  .active { display: block; }
-  .file:hover, .folder:hover { background: #e0e0e0; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repository Viewer</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+    }
+    #sidebar {
+      width: 300px;
+      background: #f4f4f4;
+      padding: 10px;
+      overflow-y: auto;
+      border-right: 1px solid #ccc;
+    }
+    #content {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-family: monospace;
+      background: #fff;
+    }
+    .folder, .file {
+      margin-left: 20px;
+      cursor: pointer;
+      padding: 2px 5px;
+      border-radius: 3px;
+    }
+    .folder::before {
+      content: "📂 ";
+    }
+    .file::before {
+      content: "📄 ";
+    }
+    .nested {
+      display: none;
+      margin-left: 15px;
+    }
+    .active {
+      display: block;
+    }
+    .file:hover, .folder:hover {
+      background: #e0e0e0;
+    }
+  </style>
 </head>
 <body>
+
   <div id="sidebar">
     <h3>Repository Viewer</h3>
     <div id="fileTree">Loading repository...</div>
   </div>
+
   <div id="content">
     <h2 id="fileName">Select a file</h2>
     <pre id="fileContent"></pre>
   </div>
 
-<script>
-const repoOwner = "TristanG115";
-const repoName = "Team-s-Repository";
-const branch = "main";
-const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/`;
+  <!-- Load the generated repoTree.js -->
+  <script src="repoTree.js"></script>
 
-const repoData = {}; // Stores all file contents
-
-// Fetch all files recursively
-async function fetchAllFiles(path = "") {
-  const res = await fetch(apiUrl + path + `?ref=${branch}`);
-  if (!res.ok) throw new Error("Failed to fetch repo contents");
-  const items = await res.json();
-
-  for (const item of items) {
-    if (item.type === "dir") {
-      await fetchAllFiles(item.path);
-    } else if (item.type === "file") {
-      const fileRes = await fetch(item.download_url);
-      const text = await fileRes.text();
-      repoData[item.path] = text;
-    }
-  }
-}
-
-// Build the file tree correctly (direct children only)
-function buildFileTree(container, files, path = "") {
-  container.innerHTML = "";
-
-  const children = {};
-  Object.keys(files).forEach(fullPath => {
-    if (path === "") {
-      const top = fullPath.split("/")[0];
-      children[top] = children[top] || (top === fullPath ? "file" : "folder");
-    } else if (fullPath.startsWith(path + "/")) {
-      const subPath = fullPath.slice(path.length + 1).split("/")[0];
-      const isFile = fullPath === path + "/" + subPath;
-      children[subPath] = children[subPath] || (isFile ? "file" : "folder");
-    }
-  });
-
-  Object.entries(children).forEach(([name, type]) => {
-    const fullPath = path ? path + "/" + name : name;
-    const div = document.createElement("div");
-    div.className = type;
-    div.textContent = name;
-    container.appendChild(div);
-
-    if (type === "folder") {
-      const nestedDiv = document.createElement("div");
-      nestedDiv.className = "nested";
-      div.appendChild(nestedDiv);
-
-      div.addEventListener("click", (e) => {
-        e.stopPropagation();
-        nestedDiv.classList.toggle("active");
-        if (nestedDiv.childElementCount === 0) {
-          buildFileTree(nestedDiv, files, fullPath);
-        }
-      });
-    } else {
-      div.addEventListener("click", (e) => {
-        e.stopPropagation();
-        document.getElementById("fileName").textContent = fullPath;
-        document.getElementById("fileContent").textContent = files[fullPath];
-      });
-    }
-  });
-}
-
-// Main
-(async () => {
-  try {
+  <script>
     const fileTreeContainer = document.getElementById("fileTree");
-    fileTreeContainer.textContent = "Fetching repository...";
-    await fetchAllFiles();
-    buildFileTree(fileTreeContainer, repoData);
-  } catch (err) {
-    document.getElementById("fileTree").textContent = "Error loading repository.";
-    console.error(err);
-  }
-})();
-</script>
+    const fileNameElem = document.getElementById("fileName");
+    const fileContentElem = document.getElementById("fileContent");
+
+    // Convert repoData object into a tree structure
+    function buildTree(data) {
+      const tree = {};
+      Object.keys(data).forEach(path => {
+        const parts = path.split("/");
+        let current = tree;
+        parts.forEach((part, i) => {
+          if (!current[part]) {
+            current[part] = (i === parts.length - 1) ? data[path] : {};
+          }
+          current = current[part];
+        });
+      });
+      return tree;
+    }
+
+    const treeData = buildTree(repoData);
+
+    // Recursively render the tree in the sidebar
+    function renderTree(container, node) {
+      Object.keys(node).sort().forEach(key => {
+        const value = node[key];
+        const div = document.createElement("div");
+        div.textContent = key;
+
+        if (typeof value === "string") {
+          div.className = "file";
+          div.addEventListener("click", e => {
+            e.stopPropagation();
+            fileNameElem.textContent = key;
+            fileContentElem.textContent = value;
+          });
+        } else {
+          div.className = "folder";
+          const nested = document.createElement("div");
+          nested.className = "nested";
+          renderTree(nested, value);
+          div.appendChild(nested);
+          div.addEventListener("click", e => {
+            e.stopPropagation();
+            nested.classList.toggle("active");
+          });
+        }
+
+        container.appendChild(div);
+      });
+    }
+
+    // Render the sidebar tree
+    fileTreeContainer.innerHTML = "";
+    renderTree(fileTreeContainer, treeData);
+  </script>
+
 </body>
 </html>
